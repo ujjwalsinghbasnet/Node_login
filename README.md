@@ -6,4 +6,4 @@ password.
 `npm install`
 
 ## Run 
-`nom start`
+`npm start`
