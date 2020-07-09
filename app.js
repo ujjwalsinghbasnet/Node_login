@@ -9,6 +9,8 @@ const MongoStore = require('connect-mongo')(session);
 const crypto = require('crypto');
 let app = express();
 require('dotenv').config();
+
+
 //database
 const DB_STRING = process.env.DB_STRING;
 mongoose.connect(DB_STRING,{useNewUrlParser: true,useUnifiedTopology: true});
@@ -31,35 +33,23 @@ app.use(session({
 
 //middlewares
 app.use(passport.initialize());
-// app.use(passport.session())
+app.use(passport.session());
 app.use(express.json());
 app.use(express.urlencoded({extended: true}))
 app.use(express.static(path.join(__dirname+'./public')));
-
-
-passport.serializeUser(function(user, done) {
-    done(null, user.id);
-  });
-  
-  passport.deserializeUser(function(id, done) {
-    Passports.findById(id, function(err, user) {
-      done(err, user);
-    });
-  });
-
 
 /***************** */
 function validPassword(password, hash, salt) {
     let hashVerify = crypto.pbkdf2Sync(password,salt,10000,64,'sha512').toString('hex');
     return hash === hashVerify;
 }
-function genPassword(password) {
+function genPassword(password) { //this takes password as parameter and hash it
     let salt = crypto.randomBytes(32).toString('hex');
     let genHash = crypto.pbkdf2Sync(password,salt,10000,64,'sha512').toString('hex');
 
     return{
         salt: salt,
-        hash: genHash
+        hash: genHash //returns hashed password and the salt
     }
 }
 
@@ -83,17 +73,26 @@ passport.use(new LocalStrategy(
     }
 ))
 
+
+passport.serializeUser(function(user, done) {
+    return done(null, user.id);
+  });
+  
+  passport.deserializeUser(function(id, done) {
+    Passports.findById(id, function(err, user) {
+      return done(err, user.id);
+    });
+  });
 /************************ */
-app.get('/',(req,res,next)=>{
+app.get('/',notauthenticated,(req,res,next)=>{
 
     res.sendFile('index.html',{root: path.join(__dirname+'/public')});
 });
-app.get('/login',(req,res)=>{
+app.get('/login',notauthenticated,(req,res)=>{
     res.sendFile('login.html',{root: path.join(__dirname+'/public')});
 
 })
 app.post('/register',(req,res)=>{
-    console.log(req.body);
     const saltHash = genPassword(req.body.password);
     const salt = saltHash.salt;
     const hash = saltHash.hash;
@@ -107,5 +106,32 @@ app.post('/register',(req,res)=>{
 
     res.redirect('/login');
 })
+
 app.post('/login',passport.authenticate('local',{successRedirect: '/success',failureRedirect: '/failed',failureFlash: true}));
+app.get('/success',authenticateUser,(req,res)=>{
+    if(req.session){
+        res.send('<a href = "/logout">Logout</a>')
+    } else {
+        res.redirect('/login');
+    }
+})
+
+app.get('/logout',(req,res)=>{
+    req.logout();
+    res.redirect('/login');
+})
+function authenticateUser(req,res,next){
+    if(req.isAuthenticated()){
+        return next();
+    } else {
+        console.log('error');
+        res.redirect('/login');
+    }
+}
+function notauthenticated(req,res,next){
+    if(!req.isAuthenticated()){
+        return next();
+    }
+    res.redirect('/success')
+}
 app.listen(3000,()=>console.log('server started successfully'));
